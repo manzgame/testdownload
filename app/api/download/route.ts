@@ -10,7 +10,7 @@ import type { DownloadApiResponse, MediaKind, NormalizedMedia, PlatformInfo } fr
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
+ 
 const DIRECT_EXTENSIONS: Record<string, MediaKind> = {
   mp4: "video", webm: "video", mov: "video", m4v: "video", mkv: "video",
   mp3: "audio", m4a: "audio", aac: "audio", wav: "audio", ogg: "audio", opus: "audio", flac: "audio",
