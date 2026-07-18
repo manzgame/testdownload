@@ -2,31 +2,19 @@ import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { cobaltDownload } from "@/lib/cobalt";
 import { detectPlatform } from "@/lib/platforms";
+import { pinterestQueryFromInput, pinterestSearch } from "@/lib/providers/pinterest";
+import { spotifyDownload } from "@/lib/providers/spotify";
+import { tikTokDownload } from "@/lib/providers/tiktok";
 import type { DownloadApiResponse, MediaKind, NormalizedMedia, PlatformInfo } from "@/types/download";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
- 
+
 const DIRECT_EXTENSIONS: Record<string, MediaKind> = {
-  mp4: "video",
-  webm: "video",
-  mov: "video",
-  m4v: "video",
-  mkv: "video",
-  mp3: "audio",
-  m4a: "audio",
-  aac: "audio",
-  wav: "audio",
-  ogg: "audio",
-  opus: "audio",
-  flac: "audio",
-  jpg: "image",
-  jpeg: "image",
-  png: "image",
-  webp: "image",
-  gif: "image",
-  avif: "image",
+  mp4: "video", webm: "video", mov: "video", m4v: "video", mkv: "video",
+  mp3: "audio", m4a: "audio", aac: "audio", wav: "audio", ogg: "audio", opus: "audio", flac: "audio",
+  jpg: "image", jpeg: "image", png: "image", webp: "image", gif: "image", avif: "image",
 };
 
 function json(payload: DownloadApiResponse, status = 200) {
@@ -37,6 +25,15 @@ function json(payload: DownloadApiResponse, status = 200) {
       "X-Content-Type-Options": "nosniff",
     },
   });
+}
+
+function isHttpUrl(value: string) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function directMedia(url: string, platform: PlatformInfo): NormalizedMedia | null {
@@ -61,65 +58,69 @@ function directMedia(url: string, platform: PlatformInfo): NormalizedMedia | nul
         audio: kind === "audio" ? url : undefined,
         image: kind === "image" ? url : undefined,
       },
-      downloads: [
-        {
-          id,
-          kind,
-          url,
-          label: `${kind === "video" ? "Video" : kind === "audio" ? "Audio" : "Gambar"} asli`,
-          format: extension.toUpperCase(),
-        },
-      ],
+      downloads: [{ id, kind, url, label: `${kind === "video" ? "Video" : kind === "audio" ? "Audio" : "Gambar"} asli`, format: extension.toUpperCase() }],
+      gallery: kind === "file" ? undefined : [{ id: `${id}-preview`, kind, url, previewUrl: kind === "image" ? url : undefined, label: "Media asli" }],
+      contentType: "Direct media",
+      sourceUrl: url,
+      provider: "Direct URL",
     };
   } catch {
     return null;
   }
 }
 
-async function processUrl(input: unknown) {
-  const url = typeof input === "string" ? input.trim() : "";
-  const platform = detectPlatform(url);
+async function processInput(input: unknown) {
+  const value = typeof input === "string" ? input.trim() : "";
+  const platform = detectPlatform(value);
 
-  if (!url) return json({ success: false, input: "", platform, error: "Tempel tautan media terlebih dahulu." }, 400);
-  if (url.length > 4096) return json({ success: false, input: url, platform, error: "Tautan terlalu panjang." }, 400);
+  if (!value) return json({ success: false, input: "", platform, error: "Tempel tautan media terlebih dahulu." }, 400);
+  if (value.length > 4096) return json({ success: false, input: value, platform, error: "Tautan terlalu panjang." }, 400);
 
-  const direct = directMedia(url, platform);
-  if (direct) return json({ success: true, input: url, platform, media: direct });
+  const pinterestQuery = pinterestQueryFromInput(value);
+  if (!isHttpUrl(value) && !pinterestQuery) {
+    return json({ success: false, input: value, platform, error: "Masukkan URL valid, atau gunakan format pinterest: kata kunci." }, 400);
+  }
 
-  const result = await cobaltDownload(url, platform);
+  if (isHttpUrl(value)) {
+    const direct = directMedia(value, platform);
+    if (direct) return json({ success: true, input: value, platform, media: direct });
+  }
+
+  let result;
+  if (platform.id === "tiktok") {
+    result = await tikTokDownload(value, platform);
+    if (!result.ok) {
+      const fallback = await cobaltDownload(value, platform);
+      if (fallback.ok) result = fallback;
+    }
+  } else if (platform.id === "spotify") {
+    result = await spotifyDownload(value, platform);
+  } else if (platform.id === "pinterest" && pinterestQuery) {
+    result = await pinterestSearch(value, platform);
+  } else {
+    result = await cobaltDownload(value, platform);
+  }
+
   if (!result.ok || !result.media) {
     return json(
-      {
-        success: false,
-        input: url,
-        platform,
-        error: result.error || "Media belum bisa diproses. Pastikan tautannya publik dan backend aktif.",
-      },
+      { success: false, input: value, platform, error: result.error || "Media belum bisa diproses. Pastikan tautannya publik dan provider aktif." },
       result.status >= 400 && result.status <= 599 ? result.status : 502,
     );
   }
 
-  return json({ success: true, input: url, platform, media: result.media });
+  return json({ success: true, input: value, platform, media: result.media });
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    return processUrl(body?.url);
+    return processInput(body?.url);
   } catch {
-    return json(
-      {
-        success: false,
-        input: "",
-        platform: detectPlatform(""),
-        error: "Permintaan tidak valid.",
-      },
-      400,
-    );
+    return json({ success: false, input: "", platform: detectPlatform(""), error: "Permintaan tidak valid." }, 400);
   }
 }
 
 export async function GET(request: Request) {
-  const url = new URL(request.url).searchParams.get("url");
-  return processUrl(url);
+  const value = new URL(request.url).searchParams.get("url");
+  return processInput(value);
 }
