@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { tikTokProfile } from "@/lib/providers/tiktok";
 import type { TikTokProfileApiResponse } from "@/types/download";
-
+ 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
