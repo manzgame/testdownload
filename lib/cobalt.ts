@@ -248,4 +248,4 @@ export async function cobaltDownload(url: string, platform: PlatformInfo): Promi
   } finally {
     clearTimeout(timer);
   }
-}
+} 
