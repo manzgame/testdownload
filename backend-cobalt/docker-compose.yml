@@ -24,4 +24,3 @@ services:
     command: --cleanup --scope datzon-cobalt --interval 900 --include-restarting
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
- 
