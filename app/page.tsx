@@ -4,6 +4,8 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowDownToLine,
+  Bookmark,
+  CalendarDays,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -11,28 +13,34 @@ import {
   Clock3,
   Copy,
   ExternalLink,
+  Eye,
   FileDown,
+  Heart,
   History,
   Image as ImageIcon,
   Layers3,
   Link2,
+  MapPin,
+  MessageCircle,
   Moon,
   Music2,
   Palette,
   RotateCcw,
+  Share2,
   ShieldCheck,
   Sparkles,
   Sun,
   Trash2,
+  UserRound,
   Video,
   X,
   Zap,
 } from "lucide-react";
-import { AudioPlayer } from "@/components/audio-player";
 import { BrandLogo } from "@/components/brand-logo";
+import { MediaPreview } from "@/components/media-preview";
 import { PlatformIcon } from "@/components/platform-icon";
 import { detectPlatform, SUPPORTED_PLATFORMS } from "@/lib/platforms";
-import type { DownloadApiResponse, MediaDownload, MediaKind } from "@/types/download";
+import type { DownloadApiResponse, MediaDownload, MediaKind, MediaStats } from "@/types/download";
 
 type Theme = "light" | "dark";
 type Accent = "mono" | "lime" | "sky" | "violet" | "coral";
@@ -69,6 +77,10 @@ function isValidHttpUrl(value: string) {
   }
 }
 
+function isProcessableInput(value: string) {
+  return isValidHttpUrl(value) || /^pinterest\s*:\s*\S.{1,}$/i.test(value);
+}
+
 function formatDate(timestamp: number) {
   return new Intl.DateTimeFormat("id-ID", {
     day: "2-digit",
@@ -78,7 +90,16 @@ function formatDate(timestamp: number) {
   }).format(new Date(timestamp));
 }
 
+function formatCount(value?: number) {
+  const amount = Number(value || 0);
+  return new Intl.NumberFormat("id-ID", {
+    notation: amount >= 10_000 ? "compact" : "standard",
+    maximumFractionDigits: 1,
+  }).format(amount);
+}
+
 function safeHostname(value: string) {
+  if (/^pinterest\s*:/i.test(value)) return "pencarian Pinterest";
   try {
     return new URL(value).hostname.replace(/^www\./, "");
   } catch {
@@ -105,19 +126,6 @@ function LoadingSkeleton() {
   );
 }
 
-function EmptyPreview({ platformId }: { platformId: string }) {
-  return (
-    <div className="empty-preview">
-      <div className="empty-preview-orbit orbit-one" />
-      <div className="empty-preview-orbit orbit-two" />
-      <div className="empty-preview-icon">
-        <PlatformIcon id={platformId} className="platform-svg large" />
-      </div>
-      <span>Preview media tidak tersedia</span>
-    </div>
-  );
-}
-
 function DownloadItem({ item, onCopy }: { item: MediaDownload; onCopy: (url: string) => void }) {
   const meta = KIND_META[item.kind];
   const Icon = meta.icon;
@@ -125,7 +133,7 @@ function DownloadItem({ item, onCopy }: { item: MediaDownload; onCopy: (url: str
   return (
     <article className="download-item">
       <div className={`download-kind kind-${item.kind}`}>
-        <Icon size={19} />
+        {item.thumbnail ? <img src={item.thumbnail} alt="" referrerPolicy="no-referrer" /> : <Icon size={19} />}
       </div>
       <div className="download-info">
         <div className="download-title-row">
@@ -143,19 +151,82 @@ function DownloadItem({ item, onCopy }: { item: MediaDownload; onCopy: (url: str
         <button className="icon-button" type="button" onClick={() => onCopy(item.url)} aria-label="Salin tautan media" title="Salin tautan">
           <Copy size={17} />
         </button>
-        <a
-          className="mini-3d-button"
-          href={item.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          referrerPolicy="no-referrer"
-          download
-        >
+        <a className="mini-3d-button" href={item.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" download>
           <ArrowDownToLine size={17} />
           <span>Unduh</span>
         </a>
       </div>
     </article>
+  );
+}
+
+function CaptionBox({ text, onCopy }: { text: string; onCopy: (value: string) => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = text.length > 180;
+
+  useEffect(() => setExpanded(false), [text]);
+
+  return (
+    <div className="caption-panel">
+      <div className="caption-panel-head">
+        <span>CAPTION / DESKRIPSI</span>
+        <button type="button" onClick={() => onCopy(text)}><Copy size={15} /> Salin</button>
+      </div>
+      <p className={expanded ? "expanded" : ""}>{text}</p>
+      {isLong && (
+        <button className="caption-toggle" type="button" onClick={() => setExpanded((value) => !value)}>
+          {expanded ? "Tampilkan sedikit" : "Tampilkan semua"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CreatorCard({ creator }: { creator: NonNullable<DownloadApiResponse["media"]>["creator"] }) {
+  if (!creator) return null;
+  return (
+    <div className="creator-card">
+      <div className="creator-avatar">
+        {creator.avatar ? <img src={creator.avatar} alt={creator.name} referrerPolicy="no-referrer" /> : <UserRound size={22} />}
+      </div>
+      <div className="creator-copy">
+        <strong>{creator.name}</strong>
+        {creator.username && <span>@{creator.username}</span>}
+      </div>
+      {creator.profileUrl && (
+        <a href={creator.profileUrl} target="_blank" rel="noopener noreferrer" aria-label="Buka profil kreator">
+          <ExternalLink size={17} />
+        </a>
+      )}
+    </div>
+  );
+}
+
+function StatsGrid({ stats }: { stats?: MediaStats }) {
+  if (!stats) return null;
+  const entries = [
+    { key: "views", label: "Views", icon: Eye, value: stats.views },
+    { key: "likes", label: "Likes", icon: Heart, value: stats.likes },
+    { key: "comments", label: "Komentar", icon: MessageCircle, value: stats.comments },
+    { key: "shares", label: "Share", icon: Share2, value: stats.shares },
+    { key: "favorites", label: "Favorit", icon: Bookmark, value: stats.favorites },
+  ].filter((item) => typeof item.value === "number" && item.value > 0);
+
+  if (!entries.length) return null;
+
+  return (
+    <div className="stats-grid-rich">
+      {entries.map((item) => {
+        const Icon = item.icon;
+        return (
+          <div key={item.key}>
+            <span><Icon size={16} /></span>
+            <strong>{formatCount(item.value)}</strong>
+            <small>{item.label}</small>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -173,7 +244,7 @@ export default function HomePage() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const platform = useMemo(() => detectPlatform(url), [url]);
-  const validUrl = isValidHttpUrl(url.trim());
+  const validInput = isProcessableInput(url.trim());
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("datzon-theme") as Theme | null;
@@ -228,12 +299,12 @@ export default function HomePage() {
     }
   }
 
-  async function copyLink(link: string) {
+  async function copyText(value: string, successMessage = "Tautan media disalin.") {
     try {
-      await navigator.clipboard.writeText(link);
-      showToast("Tautan media disalin.");
+      await navigator.clipboard.writeText(value);
+      showToast(successMessage);
     } catch {
-      showToast("Tautan gagal disalin.");
+      showToast("Teks gagal disalin.");
     }
   }
 
@@ -258,8 +329,8 @@ export default function HomePage() {
     event.preventDefault();
     const cleanUrl = url.trim();
 
-    if (!isValidHttpUrl(cleanUrl)) {
-      setError("Tautannya belum valid. Pastikan dimulai dengan http:// atau https://");
+    if (!isProcessableInput(cleanUrl)) {
+      setError("Masukkan URL valid. Untuk pencarian gambar, gunakan format pinterest: kata kunci.");
       inputRef.current?.focus();
       return;
     }
@@ -280,9 +351,7 @@ export default function HomePage() {
       });
       const data = (await request.json()) as DownloadApiResponse;
 
-      if (!request.ok || !data.success || !data.media) {
-        throw new Error(data.error || "Media gagal diproses.");
-      }
+      if (!request.ok || !data.success || !data.media) throw new Error(data.error || "Media gagal diproses.");
 
       setResponse(data);
       saveHistory(data);
@@ -327,53 +396,27 @@ export default function HomePage() {
         <div className="container nav-inner">
           <a className="brand" href="#top" aria-label="DATZON Downloader beranda">
             <BrandLogo className="brand-mark" />
-            <div className="brand-copy">
-              <strong>DATZON</strong>
-              <span>DOWNLOADER</span>
-            </div>
+            <div className="brand-copy"><strong>DATZON</strong><span>DOWNLOADER</span></div>
           </a>
 
           <div className="nav-actions">
-            <div className="status-pill desktop-only"><span className="status-dot" /> Universal media engine</div>
+            <div className="status-pill desktop-only"><span className="status-dot" /> Multi-provider engine</div>
             <div className="accent-picker">
-              <button
-                className="nav-button accent-trigger"
-                type="button"
-                onClick={() => setAccentMenuOpen((open) => !open)}
-                aria-expanded={accentMenuOpen}
-                aria-label="Pilih warna aksen"
-              >
-                <Palette size={18} />
-                <span className={`accent-preview accent-${accent}`} />
-                <ChevronDown size={15} />
+              <button className="nav-button accent-trigger" type="button" onClick={() => setAccentMenuOpen((open) => !open)} aria-expanded={accentMenuOpen} aria-label="Pilih warna aksen">
+                <Palette size={18} /><span className={`accent-preview accent-${accent}`} /><ChevronDown size={15} />
               </button>
               {accentMenuOpen && (
                 <div className="accent-menu">
                   <div className="accent-menu-label">AKSEN WARNA</div>
                   {ACCENTS.map((option) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      className={accent === option.id ? "active" : ""}
-                      onClick={() => {
-                        setAccent(option.id);
-                        setAccentMenuOpen(false);
-                      }}
-                    >
-                      <span className={`accent-swatch accent-${option.id}`} />
-                      <span>{option.name}</span>
-                      {accent === option.id && <Check size={16} />}
+                    <button key={option.id} type="button" className={accent === option.id ? "active" : ""} onClick={() => { setAccent(option.id); setAccentMenuOpen(false); }}>
+                      <span className={`accent-swatch accent-${option.id}`} /><span>{option.name}</span>{accent === option.id && <Check size={16} />}
                     </button>
                   ))}
                 </div>
               )}
             </div>
-            <button
-              className="nav-button theme-button"
-              type="button"
-              onClick={() => setTheme((current) => current === "light" ? "dark" : "light")}
-              aria-label={theme === "light" ? "Aktifkan mode gelap" : "Aktifkan mode terang"}
-            >
+            <button className="nav-button theme-button" type="button" onClick={() => setTheme((current) => current === "light" ? "dark" : "light")} aria-label={theme === "light" ? "Aktifkan mode gelap" : "Aktifkan mode terang"}>
               {theme === "light" ? <Moon size={19} /> : <Sun size={19} />}
             </button>
           </div>
@@ -382,82 +425,57 @@ export default function HomePage() {
 
       <main id="top">
         <section className="hero container">
-          <div className="eyebrow"><Sparkles size={15} /> Bersih, cepat, tanpa tampilan murahan</div>
+          <div className="eyebrow"><Sparkles size={15} /> Preview langsung, bukan kartu kosong</div>
           <h1>Unduh media.<br /><span>Tanpa ribet.</span></h1>
-          <p className="hero-copy">
-            Tempel tautan dari platform favoritmu. DATZON akan mendeteksi sumber, memproses media, dan menyusun pilihan unduhan dalam satu tampilan yang waras.
-          </p>
+          <p className="hero-copy">TikTok, Spotify, Pinterest, YouTube, Instagram, dan platform lain disatukan dalam satu tampilan yang benar-benar menampilkan medianya.</p>
 
           <div className="downloader-panel">
             <form onSubmit={handleSubmit}>
-              <div className={`url-field ${url && validUrl ? "valid" : ""} ${error ? "invalid" : ""}`}>
-                <div className="url-leading">
-                  {url ? <PlatformIcon id={platform.id} className="platform-svg" /> : <Link2 size={21} />}
-                </div>
+              <div className={`url-field ${url && validInput ? "valid" : ""} ${error ? "invalid" : ""}`}>
+                <div className="url-leading">{url ? <PlatformIcon id={platform.id} className="platform-svg" /> : <Link2 size={21} />}</div>
                 <div className="url-input-wrap">
                   <label htmlFor="media-url">TAUTAN MEDIA</label>
                   <input
                     ref={inputRef}
                     id="media-url"
-                    type="url"
+                    type="text"
                     inputMode="url"
                     autoComplete="off"
                     spellCheck={false}
-                    placeholder="https://youtube.com/watch?v=..."
+                    placeholder="Tempel link atau ketik pinterest: anime"
                     value={url}
-                    onChange={(event) => {
-                      setUrl(event.target.value);
-                      setError("");
-                    }}
+                    onChange={(event) => { setUrl(event.target.value); setError(""); }}
                     disabled={loading}
                   />
                 </div>
                 <div className="url-actions">
-                  {url && (
-                    <button type="button" className="field-icon-button" onClick={() => setUrl("")} aria-label="Hapus tautan">
-                      <X size={18} />
-                    </button>
-                  )}
-                  <button type="button" className="paste-button" onClick={pasteFromClipboard} disabled={loading}>
-                    <Clipboard size={17} />
-                    <span>Tempel</span>
+                  {url && <button type="button" className="field-icon-button" onClick={() => setUrl("")} aria-label="Hapus tautan"><X size={18} /></button>}
+                  <button type="button" className="paste-button" onClick={pasteFromClipboard} disabled={loading} aria-label="Tempel dari clipboard" title="Tempel dari clipboard">
+                    <Clipboard size={17} /><span>Tempel</span>
                   </button>
                 </div>
               </div>
 
               <div className="detector-row">
                 <div className="detected-platform">
-                  <span className={`detect-light ${url && validUrl ? "on" : ""}`} />
-                  {url && validUrl ? (
-                    <><strong>{platform.name}</strong><span>terdeteksi dari {platform.hostname || safeHostname(url)}</span></>
-                  ) : (
-                    <span>Platform terdeteksi otomatis setelah tautan ditempel</span>
-                  )}
+                  <span className={`detect-light ${url && validInput ? "on" : ""}`} />
+                  {url && validInput ? <><strong>{platform.name}</strong><span>terdeteksi dari {platform.hostname || safeHostname(url)}</span></> : <span>Platform terdeteksi otomatis setelah tautan ditempel</span>}
                 </div>
                 <span className="privacy-note"><ShieldCheck size={15} /> Riwayat hanya tersimpan di perangkat</span>
               </div>
 
-              <button className="primary-3d-button" type="submit" disabled={!validUrl || loading}>
+              <button className="primary-3d-button" type="submit" disabled={!validInput || loading}>
                 <span className="button-icon-wrap">{loading ? <span className="spinner" /> : <ArrowDownToLine size={21} />}</span>
                 <span>{loading ? "Sedang memproses..." : "Proses media"}</span>
                 {!loading && <span className="button-key">ENTER</span>}
               </button>
             </form>
 
-            <div className="panel-footer">
-              <div><Zap size={16} /> Deteksi otomatis</div>
-              <div><Layers3 size={16} /> Banyak format</div>
-              <div><ShieldCheck size={16} /> Tautan publik</div>
-            </div>
+            <div className="panel-footer"><div><Zap size={16} /> Deteksi otomatis</div><div><Layers3 size={16} /> Banyak format</div><div><ShieldCheck size={16} /> Tautan publik</div></div>
           </div>
 
           <div className="platform-strip" aria-label="Platform yang didukung">
-            {SUPPORTED_PLATFORMS.slice(0, 10).map((item) => (
-              <div className="platform-chip" key={item.id} title={item.name}>
-                <PlatformIcon id={item.id} className="platform-svg" />
-                <span>{item.name}</span>
-              </div>
-            ))}
+            {SUPPORTED_PLATFORMS.slice(0, 10).map((item) => <div className="platform-chip" key={item.id} title={item.name}><PlatformIcon id={item.id} className="platform-svg" /><span>{item.name}</span></div>)}
           </div>
         </section>
 
@@ -467,58 +485,39 @@ export default function HomePage() {
           {!loading && error && (
             <div className="error-card" role="alert">
               <div className="error-icon"><AlertTriangle size={24} /></div>
-              <div>
-                <span>MEDIA BELUM BERHASIL DIPROSES</span>
-                <h3>Ada masalah dengan tautan ini</h3>
-                <p>{error}</p>
-              </div>
-              <button className="secondary-button" type="button" onClick={() => inputRef.current?.focus()}>
-                <RotateCcw size={17} /> Coba lagi
-              </button>
+              <div><span>MEDIA BELUM BERHASIL DIPROSES</span><h3>Ada masalah dengan tautan ini</h3><p>{error}</p></div>
+              <button className="secondary-button" type="button" onClick={() => inputRef.current?.focus()}><RotateCcw size={17} /> Coba lagi</button>
             </div>
           )}
 
           {!loading && response?.media && (
             <section className="result-card result-enter">
-              <div className="preview-column">
-                {response.media.preview.video ? (
-                  <video
-                    className="video-preview"
-                    src={response.media.preview.video}
-                    poster={response.media.thumbnail}
-                    controls
-                    playsInline
-                    preload="metadata"
-                  />
-                ) : response.media.preview.audio ? (
-                  <AudioPlayer src={response.media.preview.audio} title={response.media.title} artwork={response.media.thumbnail} />
-                ) : response.media.preview.image ? (
-                  <div className="image-preview-wrap"><img className="image-preview" src={response.media.preview.image} alt={response.media.title} referrerPolicy="no-referrer" /></div>
-                ) : (
-                  <EmptyPreview platformId={response.platform.id} />
-                )}
-              </div>
+              <div className="preview-column"><MediaPreview media={response.media} /></div>
 
               <div className="result-body">
+                <CreatorCard creator={response.media.creator} />
+
                 <div className="result-heading">
                   <div>
-                    <div className="result-platform-badge">
-                      <PlatformIcon id={response.platform.id} className="platform-svg" />
-                      {response.platform.name}
+                    <div className="result-badge-row">
+                      <div className="result-platform-badge"><PlatformIcon id={response.platform.id} className="platform-svg" />{response.platform.name}</div>
+                      {response.media.contentType && <span className="content-type-badge">{response.media.contentType}</span>}
                     </div>
                     <h2>{response.media.title}</h2>
                     <div className="result-subline">
-                      {response.media.author && <span>{response.media.author}</span>}
+                      {response.media.author && <span><UserRound size={14} /> {response.media.author}</span>}
+                      {response.media.album && <span><Layers3 size={14} /> {response.media.album}</span>}
                       {response.media.duration && <span><Clock3 size={14} /> {response.media.duration}</span>}
-                      <span><CheckCircle2 size={14} /> Media ditemukan</span>
+                      {response.media.region && <span><MapPin size={14} /> {response.media.region}</span>}
+                      {response.media.publishedAt && <span><CalendarDays size={14} /> {response.media.publishedAt}</span>}
+                      {response.media.provider && <span><CheckCircle2 size={14} /> {response.media.provider}</span>}
                     </div>
                   </div>
-                  <button className="icon-button reset-result" type="button" onClick={resetDownloader} aria-label="Proses tautan baru" title="Tautan baru">
-                    <RotateCcw size={18} />
-                  </button>
+                  <button className="icon-button reset-result" type="button" onClick={resetDownloader} aria-label="Proses tautan baru" title="Tautan baru"><RotateCcw size={18} /></button>
                 </div>
 
-                {response.media.description && <p className="result-description">{response.media.description}</p>}
+                {response.media.description && <CaptionBox text={response.media.description} onCopy={(text) => copyText(text, "Caption disalin.")} />}
+                <StatsGrid stats={response.media.stats} />
 
                 <div className="asset-summary">
                   <div><strong>{response.media.downloads.length}</strong><span>Total pilihan</span></div>
@@ -527,70 +526,35 @@ export default function HomePage() {
                   <div><strong>{imageCount}</strong><span>Gambar</span></div>
                 </div>
 
+                {response.media.sourceUrl && isValidHttpUrl(response.media.sourceUrl) && (
+                  <a className="source-link" href={response.media.sourceUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={16} /> Buka link asli</a>
+                )}
+
                 <div className="download-section-heading">
-                  <div>
-                    <span>PILIH FORMAT</span>
-                    <h3>Siap untuk diunduh</h3>
-                  </div>
-                  <span className="download-note">Tautan dapat kedaluwarsa, unduh setelah diproses.</span>
+                  <div><span>PILIH FORMAT</span><h3>Siap untuk diunduh</h3></div>
+                  <span className="download-note">Preview tampil langsung. Tombol di bawah khusus untuk menyimpan file.</span>
                 </div>
 
-                <div className="download-list">
-                  {response.media.downloads.map((item) => <DownloadItem key={item.id} item={item} onCopy={copyLink} />)}
-                </div>
+                <div className="download-list">{response.media.downloads.map((item) => <DownloadItem key={item.id} item={item} onCopy={(link) => copyText(link)} />)}</div>
               </div>
             </section>
           )}
         </section>
 
         <section className="lower-grid container">
-          <article className="feature-card featured">
-            <div className="feature-number">01</div>
-            <div className="feature-icon"><Zap size={22} /></div>
-            <h3>Deteksi tanpa pilihan manual</h3>
-            <p>Tautan dibaca lebih dulu, lalu tampilan hasil menyesuaikan video, musik, gambar, atau berkas yang ditemukan.</p>
-          </article>
-          <article className="feature-card">
-            <div className="feature-number">02</div>
-            <div className="feature-icon"><Layers3 size={22} /></div>
-            <h3>Hasil lebih terstruktur</h3>
-            <p>Kualitas, format, ukuran, preview, dan tombol unduh disusun rapi. Tidak ada lagi berburu URL di dalam JSON.</p>
-          </article>
-          <article className="feature-card">
-            <div className="feature-number">03</div>
-            <div className="feature-icon"><ShieldCheck size={22} /></div>
-            <h3>Privasi lokal</h3>
-            <p>Riwayat tampilan disimpan di browser perangkatmu dan bisa dibersihkan kapan saja.</p>
-          </article>
+          <article className="feature-card featured"><div className="feature-number">01</div><div className="feature-icon"><Zap size={22} /></div><h3>Provider sesuai platform</h3><p>TikTok, Spotify, dan Pinterest memakai mesin khusus. Platform lain tetap memakai backend universal.</p></article>
+          <article className="feature-card"><div className="feature-number">02</div><div className="feature-icon"><Layers3 size={22} /></div><h3>Video, musik, dan slide langsung terlihat</h3><p>Hasil pertama otomatis tampil. Galeri foto dan live photo bisa dipindah dari thumbnail tanpa membuka tab baru.</p></article>
+          <article className="feature-card"><div className="feature-number">03</div><div className="feature-icon"><ShieldCheck size={22} /></div><h3>Privasi lokal</h3><p>Riwayat tampilan disimpan di browser perangkatmu dan bisa dibersihkan kapan saja.</p></article>
         </section>
 
         {history.length > 0 && (
           <section className="history-section container">
-            <div className="section-heading-row">
-              <div>
-                <span className="section-kicker"><History size={15} /> RIWAYAT LOKAL</span>
-                <h2>Baru saja diproses</h2>
-              </div>
-              <button className="text-button danger" type="button" onClick={clearHistory}><Trash2 size={16} /> Bersihkan</button>
-            </div>
+            <div className="section-heading-row"><div><span className="section-kicker"><History size={15} /> RIWAYAT LOKAL</span><h2>Baru saja diproses</h2></div><button className="text-button danger" type="button" onClick={clearHistory}><Trash2 size={16} /> Bersihkan</button></div>
             <div className="history-grid">
               {history.map((item) => (
-                <button
-                  className="history-item"
-                  key={`${item.url}-${item.createdAt}`}
-                  type="button"
-                  onClick={() => {
-                    setUrl(item.url);
-                    setResponse(null);
-                    setError("");
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  }}
-                >
+                <button className="history-item" key={`${item.url}-${item.createdAt}`} type="button" onClick={() => { setUrl(item.url); setResponse(null); setError(""); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
                   <div className="history-platform"><PlatformIcon id={item.platform} className="platform-svg" /></div>
-                  <div className="history-copy">
-                    <strong>{item.title}</strong>
-                    <span>{item.platformName} · {formatDate(item.createdAt)}</span>
-                  </div>
+                  <div className="history-copy"><strong>{item.title}</strong><span>{item.platformName} · {formatDate(item.createdAt)}</span></div>
                   <ExternalLink size={17} />
                 </button>
               ))}
@@ -601,7 +565,7 @@ export default function HomePage() {
 
       <footer className="footer">
         <div className="container footer-inner">
-          <div className="footer-brand"><BrandLogo className="brand-mark small" /><div><strong>DATZON DOWNLOADER</strong><span>Universal media utility</span></div></div>
+          <div className="footer-brand"><BrandLogo className="brand-mark small" /><div><strong>DATZON DOWNLOADER</strong><span>Multi-provider media utility</span></div></div>
           <p>Gunakan hanya untuk media yang kamu miliki atau memang diizinkan untuk diunduh. Konten berhak cipta tetap milik pemiliknya.</p>
           <span>© {new Date().getFullYear()} DATZON</span>
         </div>
