@@ -54,3 +54,7 @@ DOWNR_BASE_URLS=https://provider-utama.example,https://provider-cadangan.example
 ## Catatan penting soal hosting
 
 Proyek ini **tidak cocok untuk GitHub Pages** karena memakai API server-side di `app/api/download/route.ts`. Deploy menggunakan Vercel. Bila GitHub Pages menampilkan README, nonaktifkan Pages di Settings > Pages; repository GitHub cukup dipakai sebagai sumber kode untuk Vercel.
+
+## Perubahan provider v1.1
+
+Endpoint internal Downr dihapus karena dapat membalas `action_forbidden` saat dipanggil dari Vercel. Proyek kini memakai `COBALT_API_URL`. Baca `PROVIDER-FIX.md` sebelum deploy.
