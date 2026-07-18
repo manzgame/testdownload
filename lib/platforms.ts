@@ -1,5 +1,5 @@
 import type { PlatformInfo } from "@/types/download";
-
+ 
 const PLATFORM_RULES: Array<{
   id: string;
   name: string;
