@@ -1,4 +1,4 @@
-import type { NormalizedMedia, PlatformInfo } from "@/types/download";
+import type { NormalizedMedia, PlatformInfo, TikTokProfile } from "@/types/download";
 import {
   fetchJson,
   firstString,
@@ -10,7 +10,7 @@ import {
   safeNumber,
   safeString,
 } from "./shared";
- 
+
 type AnyRecord = Record<string, unknown>;
 
 interface TikWmResponse {
@@ -281,4 +281,70 @@ export async function tikTokDownload(url: string, platform: PlatformInfo): Promi
       error: error instanceof Error ? `TikTok gagal diproses: ${error.message}` : "TikTok gagal diproses.",
     };
   }
+}
+
+
+export interface TikTokProfileResult {
+  ok: boolean;
+  status: number;
+  profile?: TikTokProfile;
+  error?: string;
+}
+
+function normalizeRegionCode(value: unknown) {
+  const code = safeString(value).toUpperCase();
+  const aliases: Record<string, string> = { EN: "US", JA: "JP", KO: "KR", ZH: "CN", VI: "VN", MS: "MY", FIL: "PH", TL: "PH", IDN: "ID", INA: "ID" };
+  return aliases[code] || (/^[A-Z]{2}$/.test(code) ? code : "");
+}
+
+function normalizeTikTokProfile(payload: AnyRecord, fallbackUsername: string): TikTokProfile {
+  const user = record(payload.user ?? payload);
+  const stats = record(payload.stats ?? payload.statsV2 ?? payload);
+  const username = firstString(user.uniqueId, user.unique_id, user.username, fallbackUsername).replace(/^@/, "");
+  const nickname = firstString(user.nickname, user.nickName, user.displayName, username) || "TikTok Creator";
+  return {
+    username,
+    nickname,
+    avatar: firstString(user.avatarLarger, user.avatarMedium, user.avatarThumb, user.avatar) || undefined,
+    bio: firstString(user.signature, user.bio, user.desc) || undefined,
+    userId: firstString(user.id, user.uid, user.userId) || undefined,
+    secUid: firstString(user.secUid, user.sec_uid) || undefined,
+    verified: Boolean(user.verified),
+    privateAccount: Boolean(user.privateAccount || user.private || user.secret),
+    region: normalizeRegionCode(user.region ?? user.country ?? user.countryCode ?? user.language ?? payload.region) || undefined,
+    followers: safeNumber(stats.followerCount ?? stats.followers ?? stats.follower_count),
+    following: safeNumber(stats.followingCount ?? stats.following ?? stats.following_count),
+    likes: safeNumber(stats.heartCount ?? stats.diggCount ?? stats.likes ?? stats.heart),
+    videos: safeNumber(stats.videoCount ?? stats.videos ?? stats.video_count),
+    friends: safeNumber(stats.friendCount ?? stats.friends),
+    profileUrl: `https://www.tiktok.com/@${encodeURIComponent(username)}`,
+  };
+}
+
+export async function tikTokProfile(username: string): Promise<TikTokProfileResult> {
+  const cleanUsername = username.replace(/^@/, "").trim();
+  if (!cleanUsername || !/^[a-zA-Z0-9._-]{2,40}$/.test(cleanUsername)) {
+    return { ok: false, status: 400, error: "Username TikTok tidak valid." };
+  }
+
+  const endpoints = [
+    `https://www.tikwm.com/api/user/info?unique_id=${encodeURIComponent(cleanUsername)}`,
+    `https://www.tikwm.com/api/user/info?username=${encodeURIComponent(cleanUsername)}`,
+    `https://www.tikwm.com/api/user/info?url=${encodeURIComponent(`https://www.tiktok.com/@${cleanUsername}`)}`,
+  ];
+
+  let lastError = "Profil TikTok belum bisa diambil.";
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetchJson(endpoint, undefined, 30_000) as TikWmResponse;
+      const data = response.data;
+      if ((response.code === 0 && data) || (data && (record(data).user || record(data).stats))) {
+        return { ok: true, status: 200, profile: normalizeTikTokProfile(record(data), cleanUsername) };
+      }
+      lastError = response.msg || lastError;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : lastError;
+    }
+  }
+  return { ok: false, status: 502, error: lastError };
 }
