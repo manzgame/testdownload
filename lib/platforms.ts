@@ -30,12 +30,17 @@ function normalizeHostname(hostname: string) {
 }
 
 export function detectPlatform(input: string): PlatformInfo {
+  const cleanInput = input.trim();
+  if (/^pinterest\s*:/i.test(cleanInput)) {
+    return { id: "pinterest", name: "Pinterest", shortName: "PIN", hostname: "pinterest-search" };
+  }
+
   let hostname = "";
 
   try {
-    hostname = normalizeHostname(new URL(input).hostname);
+    hostname = normalizeHostname(new URL(cleanInput).hostname);
   } catch {
-    const fuzzy = input.toLowerCase();
+    const fuzzy = cleanInput.toLowerCase();
     const match = PLATFORM_RULES.find((platform) =>
       platform.hosts.some((host) => fuzzy.includes(host)),
     );
