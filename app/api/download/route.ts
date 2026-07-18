@@ -1,7 +1,6 @@
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";
-import { downr } from "@/lib/downr";
-import { normalizeMediaResult } from "@/lib/normalize";
+import { cobaltDownload } from "@/lib/cobalt";
 import { detectPlatform } from "@/lib/platforms";
 import type { DownloadApiResponse, MediaKind, NormalizedMedia, PlatformInfo } from "@/types/download";
 
@@ -87,33 +86,20 @@ async function processUrl(input: unknown) {
   const direct = directMedia(url, platform);
   if (direct) return json({ success: true, input: url, platform, media: direct });
 
-  const result = await downr(url);
-  if (!result.Status) {
+  const result = await cobaltDownload(url, platform);
+  if (!result.ok || !result.media) {
     return json(
       {
         success: false,
         input: url,
         platform,
-        error: result.Error || "Media belum bisa diproses. Pastikan tautannya publik dan masih aktif.",
+        error: result.error || "Media belum bisa diproses. Pastikan tautannya publik dan backend aktif.",
       },
-      result.Code >= 400 && result.Code < 500 ? result.Code : 502,
+      result.status >= 400 && result.status <= 599 ? result.status : 502,
     );
   }
 
-  const media = normalizeMediaResult(result.Result, platform);
-  if (media.downloads.length === 0) {
-    return json(
-      {
-        success: false,
-        input: url,
-        platform,
-        error: "Sumber merespons, tetapi tidak memberikan berkas media yang dapat diunduh.",
-      },
-      422,
-    );
-  }
-
-  return json({ success: true, input: url, platform, media });
+  return json({ success: true, input: url, platform, media: result.media });
 }
 
 export async function POST(request: Request) {
