@@ -1,5 +1,5 @@
 export type MediaKind = "video" | "audio" | "image" | "file";
-
+ 
 export interface PlatformInfo {
   id: string;
   name: string;
