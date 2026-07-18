@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import type { MediaDownload, MediaKind, NormalizedMedia, PlatformInfo } from "@/types/download";
 
 const REQUEST_TIMEOUT_MS = 45_000;
-
+ 
 type CobaltStatus = "tunnel" | "redirect" | "picker" | "local-processing" | "error";
 
 interface CobaltBaseResponse {
