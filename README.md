@@ -1,6 +1,14 @@
-# DATZON DOWNLOADER
+# DATZON DOWNLOADER 2.0
 
-Website downloader media universal berbasis Next.js dengan deteksi platform otomatis, preview video/audio/gambar, pilihan tema, aksen warna, skeleton loading, dan riwayat lokal.
+Downloader media multi-provider berbasis Next.js dengan preview langsung, tema terang/gelap, aksen warna, skeleton loading, galeri media, statistik TikTok, pemutar Spotify, Pinterest search, serta fallback Cobalt untuk platform lain.
+
+## Provider
+
+- **TikTok:** TikWM. Menampilkan kreator, avatar, caption, views, likes, komentar, share, favorit, region, tanggal, video, musik, slide foto, dan live photo.
+- **Spotify:** BINTANG API. Menampilkan cover, judul, artis, album, durasi, pemutar audio, dan tombol unduh.
+- **Pinterest:** BINTANG Pinterest Search. Gunakan URL halaman pencarian Pinterest atau ketik `pinterest: kata kunci`.
+- **YouTube, Douyin, Instagram, Facebook, X, SoundCloud, Reddit, Vimeo, Bilibili, dan lainnya:** Cobalt melalui `COBALT_API_URL`.
+- **Tautan file langsung:** `.mp4`, `.webm`, `.mp3`, `.m4a`, `.jpg`, `.png`, dan format umum lain diproses tanpa provider.
 
 ## Menjalankan secara lokal
 
@@ -20,41 +28,40 @@ npm start
 
 ## Deploy ke Vercel
 
-1. Upload folder ini ke GitHub.
-2. Import repository di Vercel.
-3. Framework akan terdeteksi sebagai Next.js.
-4. Klik Deploy.
-
-## Konfigurasi provider opsional
-
-Secara default backend mencoba domain provider bawaan. Untuk memakai alamat provider sendiri atau mengubah urutannya, tambahkan environment variable:
+1. Upload isi folder ini ke root repository GitHub.
+2. Import repository ke Vercel dengan preset Next.js.
+3. Untuk platform fallback, tambahkan Environment Variable:
 
 ```env
-DOWNR_BASE_URLS=https://provider-utama.example,https://provider-cadangan.example
+COBALT_API_URL=https://alamat-backend-cobalt-kamu
 ```
 
-`DOWNR_BASE_URL` juga didukung untuk satu alamat.
+4. Redeploy setelah Environment Variable disimpan.
+
+TikTok, Spotify, Pinterest Search, dan tautan file langsung tidak membutuhkan `COBALT_API_URL`. Cobalt hanya diperlukan untuk platform lainnya.
+
+## Backend Cobalt
+
+Folder `backend-cobalt/` berisi:
+
+- `Dockerfile` untuk hosting container yang meminta Dockerfile.
+- `docker-compose.yml` untuk VPS atau hosting Docker Compose.
+
+Cobalt berjalan pada port `9000`.
 
 ## Struktur utama
 
-- `app/page.tsx` — antarmuka downloader.
-- `app/api/download/route.ts` — API internal dan dukungan tautan media langsung.
-- `lib/downr.ts` — koneksi provider dengan domain cadangan dan cache.
-- `lib/normalize.ts` — normalisasi respons berbagai platform.
-- `lib/platforms.ts` — deteksi platform.
-- `components/` — logo SVG, ikon platform SVG, dan pemutar audio.
+- `app/page.tsx` — tampilan utama dan hasil media kaya metadata.
+- `app/api/download/route.ts` — dispatcher provider.
+- `lib/providers/tiktok.ts` — integrasi TikWM.
+- `lib/providers/spotify.ts` — integrasi Spotify BINTANG.
+- `lib/providers/pinterest.ts` — integrasi Pinterest Search.
+- `lib/cobalt.ts` — fallback Cobalt.
+- `components/media-preview.tsx` — preview video, audio, gambar, slide, dan live photo.
 
 ## Catatan
 
-- Tautan langsung `.mp4`, `.webm`, `.mp3`, `.m4a`, `.jpg`, `.png`, dan format umum lain dapat diproses tanpa provider eksternal.
-- Untuk tautan halaman platform, ketersediaan format bergantung pada respons platform dan provider.
-- Tautan media langsung dapat kedaluwarsa.
-- Gunakan hanya untuk media yang dimiliki atau diizinkan untuk diunduh.
-
-## Catatan penting soal hosting
-
-Proyek ini **tidak cocok untuk GitHub Pages** karena memakai API server-side di `app/api/download/route.ts`. Deploy menggunakan Vercel. Bila GitHub Pages menampilkan README, nonaktifkan Pages di Settings > Pages; repository GitHub cukup dipakai sebagai sumber kode untuk Vercel.
-
-## Perubahan provider v1.1
-
-Endpoint internal Downr dihapus karena dapat membalas `action_forbidden` saat dipanggil dari Vercel. Proyek kini memakai `COBALT_API_URL`. Baca `PROVIDER-FIX.md` sebelum deploy.
+- API gratis dapat berubah, lambat, atau berhenti tanpa pemberitahuan. Pesan error provider ditampilkan dengan jelas agar mudah diganti nanti.
+- URL media dari provider bisa kedaluwarsa. Unduh setelah diproses.
+- Proyek ini tidak cocok untuk GitHub Pages karena memakai route server-side Next.js.
+- Gunakan hanya untuk media yang dimiliki atau memang diizinkan untuk disimpan.
