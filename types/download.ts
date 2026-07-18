@@ -15,6 +15,31 @@ export interface MediaDownload {
   quality?: string;
   format?: string;
   size?: string;
+  thumbnail?: string;
+}
+
+export interface MediaGalleryItem {
+  id: string;
+  kind: Exclude<MediaKind, "file">;
+  url: string;
+  previewUrl?: string;
+  label: string;
+  isLive?: boolean;
+}
+
+export interface MediaCreator {
+  name: string;
+  username?: string;
+  avatar?: string;
+  profileUrl?: string;
+}
+
+export interface MediaStats {
+  views?: number;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  favorites?: number;
 }
 
 export interface NormalizedMedia {
@@ -23,6 +48,7 @@ export interface NormalizedMedia {
   description?: string;
   thumbnail?: string;
   duration?: string;
+  album?: string;
   platform: PlatformInfo;
   preview: {
     video?: string;
@@ -30,6 +56,14 @@ export interface NormalizedMedia {
     image?: string;
   };
   downloads: MediaDownload[];
+  gallery?: MediaGalleryItem[];
+  creator?: MediaCreator;
+  stats?: MediaStats;
+  contentType?: string;
+  region?: string;
+  publishedAt?: string;
+  sourceUrl?: string;
+  provider?: string;
 }
 
 export interface DownloadApiResponse {
