@@ -1,5 +1,5 @@
 "use client";
- 
+
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -15,11 +15,13 @@ import {
   ExternalLink,
   Eye,
   FileDown,
+  Globe2,
   Heart,
   History,
   Image as ImageIcon,
   Layers3,
   Link2,
+  LoaderCircle,
   MapPin,
   MessageCircle,
   Moon,
@@ -32,6 +34,8 @@ import {
   Sun,
   Trash2,
   UserRound,
+  UserSearch,
+  Users,
   Video,
   X,
   Zap,
@@ -40,7 +44,8 @@ import { BrandLogo } from "@/components/brand-logo";
 import { MediaPreview } from "@/components/media-preview";
 import { PlatformIcon } from "@/components/platform-icon";
 import { detectPlatform, SUPPORTED_PLATFORMS } from "@/lib/platforms";
-import type { DownloadApiResponse, MediaDownload, MediaKind, MediaStats } from "@/types/download";
+import { filenameForMedia, proxyMediaUrl } from "@/lib/media-client";
+import type { DownloadApiResponse, MediaDownload, MediaKind, MediaStats, TikTokProfile, TikTokProfileApiResponse } from "@/types/download";
 
 type Theme = "light" | "dark";
 type Accent = "mono" | "lime" | "sky" | "violet" | "coral";
@@ -98,6 +103,45 @@ function formatCount(value?: number) {
   }).format(amount);
 }
 
+function normalizeRegionCode(value?: string) {
+  const code = String(value || "").trim().toUpperCase();
+  const aliases: Record<string, string> = { EN: "US", JA: "JP", KO: "KR", ZH: "CN", VI: "VN", MS: "MY", FIL: "PH", TL: "PH", IDN: "ID", INA: "ID" };
+  return aliases[code] || (/^[A-Z]{2}$/.test(code) ? code : "");
+}
+
+function countryFlag(value?: string) {
+  const code = normalizeRegionCode(value);
+  if (!code) return "";
+  return code.split("").map((character) => String.fromCodePoint(127397 + character.charCodeAt(0))).join("");
+}
+
+function formatRegion(value?: string) {
+  const code = normalizeRegionCode(value);
+  return code ? `${code} ${countryFlag(code)}` : "Tidak diketahui";
+}
+
+function waitForAudioReady(url: string, timeoutMs = 36_000) {
+  return new Promise<void>((resolve, reject) => {
+    const audio = new Audio();
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      if (error) reject(error); else resolve();
+    };
+    const timer = window.setTimeout(() => finish(new Error("File audio ditemukan, tetapi belum siap diputar. Coba proses ulang beberapa saat lagi.")), timeoutMs);
+    audio.preload = "auto";
+    audio.addEventListener("canplay", () => finish(), { once: true });
+    audio.addEventListener("error", () => finish(new Error("File audio dari provider tidak dapat dimuat untuk preview.")), { once: true });
+    audio.src = proxyMediaUrl(url);
+    audio.load();
+  });
+}
+
 function safeHostname(value: string) {
   if (/^pinterest\s*:/i.test(value)) return "pencarian Pinterest";
   try {
@@ -126,14 +170,16 @@ function LoadingSkeleton() {
   );
 }
 
-function DownloadItem({ item, onCopy }: { item: MediaDownload; onCopy: (url: string) => void }) {
+function DownloadItem({ item, mediaTitle, onCopy, onDownload }: { item: MediaDownload; mediaTitle: string; onCopy: (url: string) => void; onDownload: () => void }) {
   const meta = KIND_META[item.kind];
   const Icon = meta.icon;
+  const filename = filenameForMedia(mediaTitle, item.label || meta.label, item.format);
+  const downloadUrl = proxyMediaUrl(item.url, { download: true, filename });
 
   return (
     <article className="download-item">
       <div className={`download-kind kind-${item.kind}`}>
-        {item.thumbnail ? <img src={item.thumbnail} alt="" referrerPolicy="no-referrer" /> : <Icon size={19} />}
+        {item.thumbnail ? <img src={proxyMediaUrl(item.thumbnail)} alt="" /> : <Icon size={19} />}
       </div>
       <div className="download-info">
         <div className="download-title-row">
@@ -151,7 +197,7 @@ function DownloadItem({ item, onCopy }: { item: MediaDownload; onCopy: (url: str
         <button className="icon-button" type="button" onClick={() => onCopy(item.url)} aria-label="Salin tautan media" title="Salin tautan">
           <Copy size={17} />
         </button>
-        <a className="mini-3d-button" href={item.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" download>
+        <a className="mini-3d-button" href={downloadUrl} download={filename} onClick={onDownload}>
           <ArrowDownToLine size={17} />
           <span>Unduh</span>
         </a>
@@ -182,37 +228,54 @@ function CaptionBox({ text, onCopy }: { text: string; onCopy: (value: string) =>
   );
 }
 
-function CreatorCard({ creator }: { creator: NonNullable<DownloadApiResponse["media"]>["creator"] }) {
+function CreatorCard({
+  creator,
+  canCheckProfile,
+  profileLoading,
+  onCheckProfile,
+}: {
+  creator: NonNullable<DownloadApiResponse["media"]>["creator"];
+  canCheckProfile?: boolean;
+  profileLoading?: boolean;
+  onCheckProfile?: () => void;
+}) {
   if (!creator) return null;
   return (
     <div className="creator-card">
       <div className="creator-avatar">
-        {creator.avatar ? <img src={creator.avatar} alt={creator.name} referrerPolicy="no-referrer" /> : <UserRound size={22} />}
+        {creator.avatar ? <img src={proxyMediaUrl(creator.avatar)} alt={creator.name} /> : <UserRound size={22} />}
       </div>
       <div className="creator-copy">
         <strong>{creator.name}</strong>
         {creator.username && <span>@{creator.username}</span>}
       </div>
-      {creator.profileUrl && (
-        <a href={creator.profileUrl} target="_blank" rel="noopener noreferrer" aria-label="Buka profil kreator">
-          <ExternalLink size={17} />
-        </a>
-      )}
+      <div className="creator-actions">
+        {canCheckProfile && onCheckProfile && (
+          <button className="profile-check-button" type="button" onClick={onCheckProfile} disabled={profileLoading}>
+            {profileLoading ? <LoaderCircle size={16} className="spin-icon" /> : <UserSearch size={16} />}
+            <span>{profileLoading ? "Memuat..." : "Cek profil"}</span>
+          </button>
+        )}
+        {creator.profileUrl && (
+          <a href={creator.profileUrl} target="_blank" rel="noopener noreferrer" aria-label="Buka profil kreator">
+            <ExternalLink size={17} />
+          </a>
+        )}
+      </div>
     </div>
   );
 }
 
-function StatsGrid({ stats }: { stats?: MediaStats }) {
-  if (!stats) return null;
+function StatsGrid({ stats, region }: { stats?: MediaStats; region?: string }) {
+  if (!stats && !region) return null;
   const entries = [
-    { key: "views", label: "Views", icon: Eye, value: stats.views },
-    { key: "likes", label: "Likes", icon: Heart, value: stats.likes },
-    { key: "comments", label: "Komentar", icon: MessageCircle, value: stats.comments },
-    { key: "shares", label: "Share", icon: Share2, value: stats.shares },
-    { key: "favorites", label: "Favorit", icon: Bookmark, value: stats.favorites },
-  ].filter((item) => typeof item.value === "number" && item.value > 0);
-
-  if (!entries.length) return null;
+    { key: "views", label: "Views", icon: Eye, value: formatCount(stats?.views) },
+    { key: "likes", label: "Likes", icon: Heart, value: formatCount(stats?.likes) },
+    { key: "comments", label: "Komentar", icon: MessageCircle, value: formatCount(stats?.comments) },
+    { key: "shares", label: "Share", icon: Share2, value: formatCount(stats?.shares) },
+    { key: "favorites", label: "Favorit", icon: Bookmark, value: formatCount(stats?.favorites) },
+    { key: "region", label: "Lokasi", icon: Globe2, value: formatRegion(region) },
+  ];
 
   return (
     <div className="stats-grid-rich">
@@ -221,12 +284,54 @@ function StatsGrid({ stats }: { stats?: MediaStats }) {
         return (
           <div key={item.key}>
             <span><Icon size={16} /></span>
-            <strong>{formatCount(item.value)}</strong>
+            <strong>{item.value}</strong>
             <small>{item.label}</small>
           </div>
         );
       })}
     </div>
+  );
+}
+
+function TikTokProfilePanel({ profile, loading, error }: { profile: TikTokProfile | null; loading: boolean; error: string }) {
+  if (!profile && !loading && !error) return null;
+  if (loading) {
+    return (
+      <div className="profile-panel profile-panel-loading">
+        <div className="profile-skeleton-avatar skeleton" />
+        <div className="profile-skeleton-copy"><div className="skeleton" /><div className="skeleton" /></div>
+        <LoaderCircle size={20} className="spin-icon" />
+      </div>
+    );
+  }
+  if (error) return <div className="profile-panel-error"><AlertTriangle size={17} /> {error}</div>;
+  if (!profile) return null;
+
+  const items = [
+    { label: "Followers", value: formatCount(profile.followers), icon: Users },
+    { label: "Following", value: formatCount(profile.following), icon: UserRound },
+    { label: "Total likes", value: formatCount(profile.likes), icon: Heart },
+    { label: "Video", value: formatCount(profile.videos), icon: Video },
+    { label: "Teman", value: formatCount(profile.friends), icon: Users },
+    { label: "Region", value: formatRegion(profile.region), icon: Globe2 },
+  ];
+
+  return (
+    <section className="profile-panel">
+      <div className="profile-panel-head">
+        <div className="profile-panel-avatar">{profile.avatar ? <img src={proxyMediaUrl(profile.avatar)} alt={profile.nickname} /> : <UserRound size={28} />}</div>
+        <div className="profile-panel-copy">
+          <div className="profile-panel-name"><strong>{profile.nickname}</strong>{profile.verified && <CheckCircle2 size={16} />}</div>
+          <span>@{profile.username}</span>
+          <div className="profile-flags"><em>{profile.privateAccount ? "Private" : "Public"}</em><em>{profile.verified ? "Verified" : "Belum verified"}</em></div>
+        </div>
+        <a href={profile.profileUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={17} /></a>
+      </div>
+      {profile.bio && <p className="profile-bio">{profile.bio}</p>}
+      <div className="profile-stats-grid">
+        {items.map((item) => { const Icon = item.icon; return <div key={item.label}><span><Icon size={15} /></span><strong>{item.value}</strong><small>{item.label}</small></div>; })}
+      </div>
+    </section>
   );
 }
 
@@ -240,6 +345,9 @@ export default function HomePage() {
   const [error, setError] = useState("");
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [toast, setToast] = useState("");
+  const [profile, setProfile] = useState<TikTokProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -338,9 +446,11 @@ export default function HomePage() {
     setLoading(true);
     setResponse(null);
     setError("");
+    setProfile(null);
+    setProfileError("");
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 55_000);
+    const timeout = setTimeout(() => controller.abort(), 90_000);
 
     try {
       const request = await fetch("/api/download", {
@@ -352,6 +462,10 @@ export default function HomePage() {
       const data = (await request.json()) as DownloadApiResponse;
 
       if (!request.ok || !data.success || !data.media) throw new Error(data.error || "Media gagal diproses.");
+
+      if (data.platform.id === "spotify" && data.media.preview.audio) {
+        await waitForAudioReady(data.media.preview.audio);
+      }
 
       setResponse(data);
       saveHistory(data);
@@ -370,10 +484,37 @@ export default function HomePage() {
     }
   }
 
+  async function loadTikTokProfile() {
+    const username = response?.media?.creator?.username;
+    if (!username || profileLoading) return;
+    if (profile) {
+      setProfile(null);
+      return;
+    }
+    setProfileLoading(true);
+    setProfileError("");
+    try {
+      const request = await fetch("/api/tiktok/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username }),
+      });
+      const data = (await request.json()) as TikTokProfileApiResponse;
+      if (!request.ok || !data.success || !data.profile) throw new Error(data.error || "Profil TikTok gagal dimuat.");
+      setProfile(data.profile);
+    } catch (requestError) {
+      setProfileError(requestError instanceof Error ? requestError.message : "Profil TikTok gagal dimuat.");
+    } finally {
+      setProfileLoading(false);
+    }
+  }
+
   function resetDownloader() {
     setUrl("");
     setResponse(null);
     setError("");
+    setProfile(null);
+    setProfileError("");
     inputRef.current?.focus();
   }
 
@@ -495,7 +636,13 @@ export default function HomePage() {
               <div className="preview-column"><MediaPreview media={response.media} /></div>
 
               <div className="result-body">
-                <CreatorCard creator={response.media.creator} />
+                <CreatorCard
+                  creator={response.media.creator}
+                  canCheckProfile={response.platform.id === "tiktok" && Boolean(response.media.creator?.username)}
+                  profileLoading={profileLoading}
+                  onCheckProfile={loadTikTokProfile}
+                />
+                {response.platform.id === "tiktok" && <TikTokProfilePanel profile={profile} loading={profileLoading} error={profileError} />}
 
                 <div className="result-heading">
                   <div>
@@ -516,15 +663,15 @@ export default function HomePage() {
                   <button className="icon-button reset-result" type="button" onClick={resetDownloader} aria-label="Proses tautan baru" title="Tautan baru"><RotateCcw size={18} /></button>
                 </div>
 
-                {response.media.description && <CaptionBox text={response.media.description} onCopy={(text) => copyText(text, "Caption disalin.")} />}
-                <StatsGrid stats={response.media.stats} />
+                {response.platform.id !== "spotify" && response.media.description && <CaptionBox text={response.media.description} onCopy={(text) => copyText(text, "Caption disalin.")} />}
+                {response.platform.id === "tiktok" && <StatsGrid stats={response.media.stats} region={response.media.region} />}
 
-                <div className="asset-summary">
+                {response.platform.id !== "spotify" && <div className="asset-summary">
                   <div><strong>{response.media.downloads.length}</strong><span>Total pilihan</span></div>
                   <div><strong>{videoCount}</strong><span>Video</span></div>
                   <div><strong>{audioCount}</strong><span>Audio</span></div>
                   <div><strong>{imageCount}</strong><span>Gambar</span></div>
-                </div>
+                </div>}
 
                 {response.media.sourceUrl && isValidHttpUrl(response.media.sourceUrl) && (
                   <a className="source-link" href={response.media.sourceUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={16} /> Buka link asli</a>
@@ -535,7 +682,7 @@ export default function HomePage() {
                   <span className="download-note">Preview tampil langsung. Tombol di bawah khusus untuk menyimpan file.</span>
                 </div>
 
-                <div className="download-list">{response.media.downloads.map((item) => <DownloadItem key={item.id} item={item} onCopy={(link) => copyText(link)} />)}</div>
+                <div className="download-list">{response.media.downloads.map((item) => <DownloadItem key={item.id} item={item} mediaTitle={response.media!.title} onCopy={(link) => copyText(link)} onDownload={() => showToast("Download sedang diproses. Tetap di halaman ini.")} />)}</div>
               </div>
             </section>
           )}
