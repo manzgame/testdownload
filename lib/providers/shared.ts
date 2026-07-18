@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import type { MediaDownload, MediaGalleryItem, MediaKind } from "@/types/download";
-
+ 
 export function hashId(value: string) {
   return createHash("sha1").update(value).digest("hex").slice(0, 12);
 }
