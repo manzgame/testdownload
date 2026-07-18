@@ -119,11 +119,14 @@ function normalizeCobalt(data: CobaltBaseResponse, platform: PlatformInfo): Coba
         platform,
         description: "Media diproses melalui backend Cobalt milik sendiri.",
         preview: {
-          video: kind === "video" && data.status === "redirect" ? response.url : undefined,
-          audio: kind === "audio" && data.status === "redirect" ? response.url : undefined,
-          image: kind === "image" && data.status === "redirect" ? response.url : undefined,
+          video: kind === "video" ? response.url : undefined,
+          audio: kind === "audio" ? response.url : undefined,
+          image: kind === "image" ? response.url : undefined,
         },
         downloads: [download],
+        gallery: kind === "file" ? undefined : [{ id: `${download.id}-gallery`, kind, url: response.url, label: download.label }],
+        contentType: kind === "audio" ? "Audio" : kind === "image" ? "Gambar" : "Video",
+        provider: "Cobalt",
       },
     };
   }
@@ -162,6 +165,14 @@ function normalizeCobalt(data: CobaltBaseResponse, platform: PlatformInfo): Coba
           image: !firstVideo ? firstImage : undefined,
         },
         downloads,
+        gallery: downloads.filter((item) => item.kind !== "file").map((item) => ({
+          id: `${item.id}-gallery`,
+          kind: item.kind as "video" | "audio" | "image",
+          url: item.url,
+          label: item.label,
+        })),
+        contentType: "Multi media",
+        provider: "Cobalt",
       },
     };
   }
@@ -248,4 +259,4 @@ export async function cobaltDownload(url: string, platform: PlatformInfo): Promi
   } finally {
     clearTimeout(timer);
   }
-} 
+}
