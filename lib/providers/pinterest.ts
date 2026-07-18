@@ -1,7 +1,7 @@
 import type { NormalizedMedia, PlatformInfo } from "@/types/download";
 import { fetchJson, firstString, formatUnixDate, makeDownload, makeGallery, safeNumber, safeString } from "./shared";
 import type { ProviderResult } from "./tiktok";
-
+ 
 type AnyRecord = Record<string, unknown>;
 
 function record(value: unknown): AnyRecord {
