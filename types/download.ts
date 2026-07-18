@@ -1,5 +1,5 @@
 export type MediaKind = "video" | "audio" | "image" | "file";
- 
+
 export interface PlatformInfo {
   id: string;
   name: string;
@@ -40,6 +40,30 @@ export interface MediaStats {
   comments?: number;
   shares?: number;
   favorites?: number;
+}
+
+export interface TikTokProfile {
+  username: string;
+  nickname: string;
+  avatar?: string;
+  bio?: string;
+  userId?: string;
+  secUid?: string;
+  verified?: boolean;
+  privateAccount?: boolean;
+  region?: string;
+  followers?: number;
+  following?: number;
+  likes?: number;
+  videos?: number;
+  friends?: number;
+  profileUrl: string;
+}
+
+export interface TikTokProfileApiResponse {
+  success: boolean;
+  profile?: TikTokProfile;
+  error?: string;
 }
 
 export interface NormalizedMedia {
