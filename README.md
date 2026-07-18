@@ -50,3 +50,7 @@ DOWNR_BASE_URLS=https://provider-utama.example,https://provider-cadangan.example
 - Untuk tautan halaman platform, ketersediaan format bergantung pada respons platform dan provider.
 - Tautan media langsung dapat kedaluwarsa.
 - Gunakan hanya untuk media yang dimiliki atau diizinkan untuk diunduh.
+
+## Catatan penting soal hosting
+
+Proyek ini **tidak cocok untuk GitHub Pages** karena memakai API server-side di `app/api/download/route.ts`. Deploy menggunakan Vercel. Bila GitHub Pages menampilkan README, nonaktifkan Pages di Settings > Pages; repository GitHub cukup dipakai sebagai sumber kode untuk Vercel.
